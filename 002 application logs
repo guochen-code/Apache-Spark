@@ -1,0 +1,5 @@
+using Log4J
+(1) create a Log4J configuration file 
+(2) configure Spark JVM to pickup the Log4J configuration file
+(3) create a Python Class to get Spark's Log4J instance and use it
+
