@@ -1,0 +1,117 @@
+Dataframe APIs
+
+
+******************************************************************************************
+we write code in
+spark sql / dataframe API / dataset API (not available to python, only in scala or java)
+|
+catalyst optimizer
+|
+RDD APIs (at the core)
+
+RDD: resilient ditributed dataset
+nothing but a data structure to hold your data records
+similar to data frames because data frames are built on top of RDD
+unlike data frames, RDD records are just language-native objects
+they do not have row/column structure and schemas
+RDD is just like Scala, Java or Python collection
+you can create a RDD reading data from a file
+RDD is internally broken down into partitions to form a distributed collection
+RDDs are resilinet, that means they are fault tolerant
+How?
+because they also store information about how they are created
+if one executor dead, drilver will assign to other executors
+because each partition comes with the information about how to create it and how to process it.
+RDD partition can be recreated and reprocessed anywhere in the cluster
+
+how to create RDD? use RDD APIs
+
+creating data frame (use modern APIs rather RDD APIs)
+1) create a SparkConf object
+2) create a Spark Session using your SparkConf
+3) use the spark session to read the data file
+
+use RDD APIs:
+1) create a SparkConf object
+2) create a SparkContext
+sc = SparkContext(conf=conf)
+preferred way instead of above
+2.1) create a spark session
+2.2) get sparkcontext from spark session
+sc = spark.sparkContext
+3) read a data file
+linesRDD = sc.textFile(sys.argv[1]) # data reader APIs in RDD are raw and fundamental. not allowed for csv, json, paquet and avro
+
+
+how to process RDD?
+RDD implement the notion of transformations and actions
+offer basic transformations
+the developers are expected to reinvent the wheel
+dataframe API to rescue, offering sql like operations
+
+linesRDD = sc.textFile(sys.argv[1])
+partitionedRDD = linesRDD.repartition(2)
+colsRDD = partitionedRDD.map(lambda line : line.replace('"','').split(","))
+# get a new RDD of list where sperated each column
+# now have row/column structure
+# still need schema, give name and datatype to each column
+# create namedtuple (or class, preferred namedtuple)
+SurveyRecord = namedtuple("SurveyRecord",["Age","Gender","Country","State"])
+selectRDD = colsRDD.map(cols:SurveyRecord(int(cols[1],cols[2],cols[3],cols[4]))
+filteredRDD = selectRDD.filter(lambda r : r.Age<40)
+kvRDD=filterRDD.map(lambda r:(r.Country,1))
+countRDD = kvRDD.reduceByKey(lambda v1,v2:v1+v2)
+colsList=countRDD.collect()
+for x in colsList:
+  logger.info(x)
+# need to hard code everythingm including regular operations such as grouping and aggregating
+# the spark engine had no clue about the data structure inside the RDD
+# neigher the spark could look inside your lambda functions
+# these two things limited spark from creating an optimized execution plan
+
+# RDDs are raw and outdated APIs for spark developers
+# give a lot of flexibility, but hard to find reasons to use them
+
+******************************************************************************************
+# the most convenient method is to use spark SQL
+
+import sys
+from pyspark.sql import SparkSession
+from lib.logger import Log4j
+
+if __name__ == '__main__':
+  spark = SparkSession.builder.master("local[3]").appName("HelloSparkSQL").getOrCreate()
+  
+  logger = log4j(spark)
+  
+  if len(sys.argv) != 2:
+    logger.error("Usage: HelloSpark <filename>")
+    sys.exit(-1)
+    
+  surveyDF = spark.read.option("header","true").option("inferSchema","true").csv(sys.argv[1])
+  
+  # previsouly, used dataframe API and RDD API
+  # use sql expression for doing the same thing
+  # only execute sql expression only on a table or view
+  # spark allows you register your dataframe as a view
+  surveyDF.createOrReplaceTempView("survey_tbl")
+  countDF = spark.sql("select Country, count(1) as count from survey_tbl where Age < 40 group by Country")
+  countDF.show()
+  
+******************************************************************************************
+spark sql engine: powerful compiler that optimizes your code and generates efficient java bytecode
+- analysis # read your code and generate an abstract syntax tree for your sql or dataframe queries.
+  your code is analyzed, and column names, table or view names, sql functions are resolved
+- logic optimization: rule-based optimization and construct a set of multiple execution plans
+  then catalyst optimizer will use cost-based optimization to assign a cost to each plan
+  the logic optimization includes standard sql optimization techniques such as predicate pushdown, rojection pruning, boolean expression simplication, and constant folding
+- physical planning: picks most effective logic plan and generates a physical plan
+  the physical plan is nothing but a set of RDD operations, which determines how the plan is going to execute on the sparkcluster
+- code generation: generate efficient java bytecode to run on each machine.
+
+# however as a spark programmer, all we do is to stick to the dataframe APIs and spark SQL, 
+# you will get all these optimization benefits
+
+
+
+
