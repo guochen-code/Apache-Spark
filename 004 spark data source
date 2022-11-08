@@ -1,7 +1,0 @@
-dataframe reader API
-
-# standard format
-spark.red.format("csv").option("header","true").option("path","/data/mycsvfiles/").option("mode","FALLFAST").schema(mySchema).load()
-# read mode (deal with malformed record): 1) permissive: replace with null; 2) dropmakformed; 3) fallfast: raise exception 
-# schema:1) explicit; 2) infer schema; 3) implicit
-

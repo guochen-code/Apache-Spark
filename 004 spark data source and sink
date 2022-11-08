@@ -1,0 +1,63 @@
+******************************************************************************************************************************************************
+# read data
+dataframe reader API
+
+# standard format
+spark.red.format("csv").option("header","true").option("path","/data/mycsvfiles/").option("mode","FALLFAST").schema(mySchema).load()
+# read mode (deal with malformed record): 1) permissive: replace with null; 2) dropmakformed; 3) fallfast: raise exception 
+# schema:1) explicit; 2) infer schema; 3) implicit
+
+******************************************************************************************************************************************************
+# write data
+- how to use dataframe writer API
+- how to use PartitionBy(...)
+- how to control file size using maxRecordsPerFile
+
+flightTimeParquetDF.write.format("avro").mode("overwrite").option("path","dataSink/avro/").save()
+
+logger.info("Num partitions before: " + str(flightTimeParquetDF.rdd.getNumPartitions())
+# how many avro files is dependent on how many partitions you set
+# but sometimes, one partition can handle all rows, so you only see one avro file with 2 partitions
+# how to check
+flightTimeParquetDF.groupBy(spark_partition_id()).count().show()
+# previously, our partition is 2. what if we make more partitions
+partitionedDF = flightTimeParquetDF.repartition(5)
+
+#partitionBy
+flightTimeParquetDF.write.format("avro").mode("overwrite").option("path","dataSink/json/").partitionBy("column-1","column-2").save()
+# (1) create a hierachy of directories, first grouped by <column-1> and then under this directory all sub-folders grouped by <column-2>
+# (2) <column-1> and <column-2> will not be in the json files because 
+
+#control the size of each file
+flightTimeParquetDF.write.format("avro").mode("overwrite").option("path","dataSink/json/").partitionBy("column-1","column-2").option("maRecordsPerFile",10000).save()
+
+******************************************************************************************************************************************************
+# spark database and tables
+spark tables:
+(1) managed tables: 1) create table in metadata; 2) save table in spark warehouse
+(2) unmanaged tables(external tables): only create table in metadata
+# managed tables must be stored inside the warehouse directory
+# unmanged data will be temporarily mapping your existing data and using it in spark sql
+
+# how to create managed table:
+dataframe.write.saveAstable("your_table_name")
+# how to create unmanged table:
+CREATE TABLE your_tbl_name(col1 data_type, col2 data_type,...)
+USING PARQUET
+LOCATION"data_file_location"
+
+# creating a managed table is going to need persistent Metastore. spark depends on Hive metastore
+spark = SparkSession.......enableHiveSupport()......
+# why to create a managed table vs csv/parquet files and their dataframes
+# apache spark comes with one default database, the name is default
+# but I want to create the table in a database with a different name
+(1) dataframe.write.saveAstable("your_database_name.your_table_name")
+(2) spark.catalog.setCurrentDatabase("your_database_name")
+    dataframe.write.saveAstable("your_table_name")
+    
+    
+
+
+
+
+
