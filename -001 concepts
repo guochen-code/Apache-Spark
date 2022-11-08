@@ -1,0 +1,44 @@
+five components of data lake
+- ingest: kafka
+- process: spark
+- manage: yarn
+- store: hadoop
+- consume: data scientist
+
+spark ecosystem
+3 layers of apache spark
+spark sql / data frames
+streaming
+Mllib (machine learning)
+graphx (graph computation)
+|
+spark core: scala/java/python/R
+|
+spark engine
+
+spark architecture
+execute spark programs:
+1) interactive clients: spark-shell, notebook
+2) submit job: spark-submit, databricks notebook, rest API
+
+driver and executor
+
+cluster manager and deployment modes
+client mode and cluster mode all about the driver's location
+
+execution model:
+- cluster managers
+- execution modes
+- execution tools
+
+spark session configs (precedenace->higher):
+environment variables -> command line options -> spark-defaults.conf -> application code
+
+transformations:
+1) narrow dependency (not depend on other partitions)
+2) wide dependency (depend on other partitions) - shuffle/sort and partition data exchange
+actions (each action leads to at least one job, one job can have multiple stages)
+
+
+
+
