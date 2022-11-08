@@ -1,5 +1,18 @@
 using Log4J
-(1) create a Log4J configuration file 
+(1) create a Log4J configuration file (log4j.properties)
 (2) configure Spark JVM to pickup the Log4J configuration file
 (3) create a Python Class to get Spark's Log4J instance and use it
+
+# which configuration is used to pass values to Spark driver JVM?
+spark.driver.extraJavaOptions
+
+# you can inform spark that log4j.properties file is present in the current directory using:
+-Dlogj.configuration=file:log4j.properties
+
+# what is the use of spark.yarn.app.container.log.dir variable?
+- this variable is used by YARN log aggregator to find your application log files
+- log4j file appender will create log files in this directory
+
+# you can define spark.extraJavaOptions in the following file:
+SPARK_HOME/conf/spark-defaults.conf
 
