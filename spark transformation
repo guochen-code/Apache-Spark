@@ -1,0 +1,147 @@
+in spark, we read the data and create one of the two things:
+- table frames: programmatic interface for your data
+- database tables: sql interface of your data
+correspondingly, when we talk about transformations, we have two approaches:
+- spark program
+- spark sql
+
+************ work with rows
+(1) manually creating rows and dataframe
+(2) collecting dataframe rows to the driver
+(3) work with an individual row in spark transformations
+
+************ work with columns
+- what is a column and how to reference it?
+- how to create column expressions?
+
+# public datasets to experiment with in databricks
+%fs ls /databricks-datasets/
+# choose one of them
+%fs ls /databricks-datasets/airlines/
+# community version is not able to handle such a big dataset, but we can use one file 
+%fs ls /databricks-datasets/airlines/part-00000
+
+airlinesDF = spark.read.format("csv").option("header","true").option("inferSchema","true").option("sampleingRatio","0.0001").load("/databricks-datasets/airline/part-00000")
+
+# spark dataframe columns are objects of type column, they do not make sense outside the dataframe
+# you cannot manipulate them independently, columns are always used within a spark transformation
+
+# two ways to reference to columns in dataframe transformation
+(1) column string
+  airlineDF.select("col-1","col-2","col-3").show(10)
+(2) column object
+  from pyspark.sql.functions import *
+  airlinesDF.select(column("origin"), col("Dest"), airlineDF.Distance, "year").show(10)
+
+# how to create column expressions
+(1) string expressions or sql expressions (more like using sql expressions)
+  airlinesDF.select("origin","dest","distance","to_date(concat(Year,Month,DayofMonth),'yyyyMMdd') as FlightDate").show(10) -> error
+  # why: because the select method only accepts column stiring or column objects, they do not take expressions
+  # how to fix? use expr() to convert expression to column object
+    airlinesDF.select("origin","dest","distance", expr("to_date(concat(Year,Month,DayofMonth),'yyyyMMdd') as FlightDate")).show(10) -> error
+  
+(2) column object expressions
+# to_date and concat functions can be directly used, but do not undersatnd the column names, they take name strings
+    airlinesDF.select("origin","dest","distance", to_date(concat("Year","Month","DayofMonth"),'yyyyMMdd') as FlightDate")).show(10) -> error
+
+************************************************************************************************************************
+# user defined functions
+  
+def parse_gender(gender):
+  female_pattern=r"^f$|f.m|w.m"
+  male_pattern=r"^m$|ma|m.l"
+  if re.search(female_pattern,gender.lower()):
+    return "Female"
+  elif re.search(male_pattern,gender.lower()):
+    return "Male"
+  else:
+    return "Unknown"
+    
+# how to use it
+(1) column object expression
+new_df = old_df.withColumn(colName, column_expression) # allows transform a single column without impacting other columns
+new_df = old_df.withColumn("Gender", parse_gender("Gender")) -> error
+# however, we cannot use a function in a column object expression
+# need to register my custom function to the driver and make it a UDF
+parse_gender_udf = udf(parse_gender, StringType()) # return type of your function, return string here
+new_df = old_df.withColumn("Gender", parse_gender_udf("Gender")) -> working
+# not in catalog, only create a UDf and serialize the function to the executors
+
+[logger.info(f) for f in spark.catalog.listFunctions() if "parse_gender_udf" in f.name] # check
+# no result because not in catalog, but you can find one for sql expression method
+
+(2) sql expression
+# the registration process is different
+# need to register as sql functionm it should go to the catalog
+spark.udf.register("parse_gender_udf",parse_gender,StringType())
+new_df = old_df.withColumn("Gender", "parse_gender_udf(Gender)") -> error
+# why? the withColumn does not take sql expression
+# how to fix: use expr() function
+new_df = old_df.withColumn("Gender", expr("parse_gender_udf(Gender)")) -> working
+
+
+************************************************************************************************************************
+
+(1) how to create a dataframe
+data_list = [("Ravi",28,1,2002),.......]
+raw_df=spark.createDataFrame(data_list)
+raw_df.printSchema()
+
+# no meaningful column name, because no schema attached to it
+# how to do it?
+- (1) namedtuple
+- (2) built-in fucntion
+raw_df=spark.createDataFrame(data_list).toDF("name","day","month","year")
+# column is fixed, but not the data type
+
+(2) add one more column
+- unique identifier
+- monotically increasing id
+- guarantted to be unique across all partitions
+raw_df=spark.createDataFrame(data_list).toDF("name","day","month","year").reparition(3)
+df1=raw_df.withColumn("id",monotonically_increasing_id())
+
+(3) case...when...
+df2 = df1.withColumn("year",expr("""
+case when year < 21 then year +2000
+when year < 100 then year + 1900
+else year
+end"""))
+
+(4) how to cast your fields
+-(1) inline cast
+df3 = df1.withColumn("year",expr("""
+case when year < 21 then cast(year as int) +2000
+when year < 100 then cast(year as int) + 1900
+else year
+end"""))
+-(2) change the schema
+df5 = df1.withColumn("day",col("day").cast(IntegerType())).withColumn("month").........)
+# after correct the original schema, use :
+df2 = df1.withColumn("year",expr("""
+case when year < 21 then year +2000
+when year < 100 then year + 1900
+else year
+end"""))
+# will not mess up with the data type
+# in summary, incorrect type may give you unexpected results, make sure you understand your dra frame types and the kind of operations that are allowed !!!!
+# the explicit casting is always a good option to avoid unexected behavior
+
+# altenatively
+df7=df5.withColumn("year",when(col("year"<21,col("year"+2000).when(col("year")<100,col("year")+1900).otherwise(col("year")))
+
+(5) add and remove columns
+df8=df7.withColumn("dob",expr("to_date(concat(day,'/',month,'/',year),'d/M/y')"))
+or
+df8=df7.withColumn("dob",to_date(expr("concat(day,'/',month,'/',year)"),'d/M/y'))
+        .drop("day","month","year")
+        .dropDuplicates(["name","dob"]) # drop dupicates by name and dob
+        .sort(expr("dob desc"))
+
+
+
+
+
+
+
+
