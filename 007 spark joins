@@ -1,6 +1,27 @@
+*********************************** inner join
+
 (1) join condition/expression: join_expr = df_left.prod_id == df_right.prod_id
 (2) join type: joinType= "inner"
 
 df_left.join(df_right,join_expr,"inner")
 
 # inner: take only those records which are matched with at least one record on the other side
+# so if df_left has 100 rows, the df_join may only have 90 rows, beacause some rows in df_left cannot find any match from df_right
+
+# join - caveat - same column names in both tables
+# change column name
+df_renamed = df.withColumnRenamed("qty","recorder_qty")
+# drop one of the two
+df.join(...)..drop(df_left.prod_id) # can be df_right as  well
+
+*********************************** outer join
+# nothing will be missing
+# outer join will take all the records even they do not match pairs
+
+# sometimes we don't need null records
+- outer join - full outer
+- left join - left outer
+- right join - right outer
+
+# coalesce : will take the first non-null value from the given list of columns
+.withColumn("prod_name",expr("coalesce(prod_name,prod_id)")
