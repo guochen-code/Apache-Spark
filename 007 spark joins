@@ -1,1 +1,6 @@
+(1) join condition/expression: join_expr = df_left.prod_id == df_right.prod_id
+(2) join type: joinType= "inner"
 
+df_left.join(df_right,join_expr,"inner")
+
+# inner: take only those records which are matched with at least one record on the other side
