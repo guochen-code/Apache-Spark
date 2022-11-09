@@ -31,6 +31,13 @@ flightTimeParquetDF.write.format("avro").mode("overwrite").option("path","dataSi
 #control the size of each file
 flightTimeParquetDF.write.format("avro").mode("overwrite").option("path","dataSink/json/").partitionBy("column-1","column-2").option("maRecordsPerFile",10000).save()
 
+#buketBy
+flightTimeParquetDF.write.format("csv").mode("overwrite").bucketBy(5,"column-1","column-2").saveAsTable("flight_data_tbl")
+# create 5 buckets...so spark creates 5 files...then look at key columns...spark computes the hash number... mod(5) -> 0,1,2,3,4...
+# each unique key combination is going to produce the same hash value
+# and hence it is going to land in the same file
+# if it can be sorted can be directly used for some operations
+.bucketBy(5,"column-1","column-2").sortBy("column-1","column-2")
 ******************************************************************************************************************************************************
 # spark database and tables
 spark tables:
