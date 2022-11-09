@@ -1,1 +1,65 @@
+from spark.sql import functions as f
+
+******************* simple aggregation, returns one row of summary
+# use functions
+df.select(f.count("*").alias("Count *"),
+          f.sum("Quantity").alias("TotalQuantity"),
+          f.avg("UnitPrice").alias("AvgPrice"),
+          f.countDistinct("InvoiceNo").alias("CountDistinct")).show()
+          
+
+# use sql expressions
+df.selectExpr("count(1) as 'count 1'", # count(1) is same as count(*)
+              "count(StockCode) as 'count filed'",
+              "sum(Quantity) as TotalQuantity",
+              "avg(UnitPrice) as AvgPrice").show()
+              
+# when you counting the field, it does not count the nulls
+
+******************* grouping, returns multiple rows
+# group and simple aggregation
+# (1) use sql expressions
+df.createOrReplaceTempView("sales")
+summary_sql=spark.sql("""
+select Country, InvoiceNo,sum(Quantity) as TotalQuantity, round(sum(Quantity*UnitPrice),2) as InvoiceValue
+from sales
+group by country, InvoiceNo""").show()
+
+# (2) data frame expressions
+summary_df=invoice_df.groupBy("Country","InvoiceNo").agg(f.sum("Quantity").alias("TotalQuantity"),
+                                f.round(f.sum(f.expr("Quantity*UnitPrice")),2).alias("InvoiceValue"))
+
+# get week number from string, first need to convert string to date
+NumberInvoices = f.countDistinct("InvoiceNo").alias("NumInvoices")
+TotalQuantity=f.sum("Quantity").alias("TotlQuantity")
+InvoiceValue=f.expr("round(sum(Quantity*UnitPrice),2) as InvoiceValue")
+
+exSummary_df.write.format("parquet")
+                  .mode("overwrite")
+                  .save("output")
+                  = df.withColumn("invoiceDate", f.to_date(f.col("InvoiceDate'), "dd-MM-yyy H.mm"))
+  .where("year(InvoiceDate)==2010")
+  .withColumn("weekNumber", f.weekofyear(f.col("InvoiceDate")))
+  .groupBy("Country","WeekNumber")
+  .agg(NumInvoices,TotalQuanity,Invoicevalue)
+
+exSummary_df.coalesce(1)
+            .write.
+            .format("parquet")
+            .mode("overwrite")
+            .save("output")
+exSummary.sort("Country","WeekNumber").show()
+
+******************* windowing aggregate
+(1) identify your partitioning numbers
+(2) identify your ordering requirement
+(3) define your window start and end
+
+summary_df = spark.read.parquet("data/summary.parquet")
+
+running_total_window = Window.partitionBy("Country")
+                              .orderBy("WeekNumber")
+                              .rowsBetween(Window.unboundedPreceding, Window.CurrentRow) # -2: 2 rows before current row
+
+summary_df.withColumn("RunningTotal",f.sum("InvoiceValue").over(running_total_window)).show()
 
