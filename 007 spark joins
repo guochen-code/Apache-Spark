@@ -25,3 +25,49 @@ df.join(...)..drop(df_left.prod_id) # can be df_right as  well
 
 # coalesce : will take the first non-null value from the given list of columns
 .withColumn("prod_name",expr("coalesce(prod_name,prod_id)")
+
+*********************************** join internal
+2 stages
+1st stage: map exchange stage
+all records are identified by the key, they are made available in the max exchange to be picked by the spark framwork
+the map exchange is like a record buffer at the executor
+then these will be sent to reduce exchange, where it is going to collect records for the same key, also partitioned in reduce exchange
+the transfer of data from a map exchange to the reduce exchane is called a shuffle operation
+the shuffle is the main reason why spark joins could be slow and not performant
+the join will happen in the reduce exchange
+
+spark.conf.set("spark,sql.shuffle.partitions",3) # 3 is corresponding to the initial setup local[3]
+join_expr=flight_time_df1.id == flight_time_df2.id
+join_df=flight_time_df1.join(flight)time_df2,join_expr,"inner") # inner, outer, left, right
+
+
+*********************************** optimization
+shuffle joins could be severely problematic for the following principal reasons:
+- huge volume - filter/aggregate
+- parallelism - shuffles/executors/keys
+- shuffle distribution - key skews (skewed distribution, a few tasks are delaying overall task time, see below)
+
+(1) always try to reduce the size of data frame to join, remove unneeded columns or rows
+(2) if you have 200 unique keys, you can have a max of 200 parallel tasks. even if you run your job run a 500 node cluster, you will be running 200 parallel tasks
+    if you want to scale your join operation and take advantage of a larger cluster, should increase the number of shuffle partitions.
+    if the number of unique keys is limiting your scalability, try increasing your join key's cardinality
+    change your join key to increase the cardinality or applying some trick to increase the cardinality of your current join key may not always be possible
+    however, you should look for opportunities to improve the parallism if you have a large cluster
+(3) important to look for distribute of your data across the keys
+    for example, join on products and you have 200 products, all your sales will joined with 200 products will result in 200 shuffle partitions
+    however, you may have some fast-moving products and slow-moving items and others are very slow-moving items
+    so a fast-moving products should have a lot of transactions and all of those will land to one parition because they all belong to the same product key
+    however, your join operation is not complete until all the partitions are joined. different size, different processing time
+    so, watch out for the time taken by individual tasks and the amount of data processed by the join task
+    if some tasks are taking significatly longer than other tasks, you have an opportunity to fix your join key or apply some hack to break the larger partition into more parititions
+    
+  
+therefore:
+(1) large to large - shuffle join - no other option
+(2) large to small - broadcast join - faster than shuffle join
+    we broadcast the smaller table (2MB) to all the executors, instead of transfer these partitions of the larger table (200GB)
+
+spark automatially apply broadcast join, if one dataframe is small
+however you know the data frame better than spark, give explicit instruction
+
+join_df=flight_time_df1.join(broadcast(flight_time_df2),join_expr,"inner")
