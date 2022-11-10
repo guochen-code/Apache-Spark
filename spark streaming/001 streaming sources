@@ -1,0 +1,36 @@
+1. scocket source
+2. rate source
+3. file source
+4. kafka source
+
+exactly-once-processing: don't miss one record and don't want to create duplicates
+
+******************************************************************************************************
+output modes:
+1. append: insert only
+2. update: see updated and new values only
+3. complete : want to see and overwrite the full result
+# these three modes are not supported everywhere, spark to catch your mistake
+
+******************************************************************************************************
+# fault tolerance and exactly once processing
+# a streaming process app in apache spark is expected to be running an infinite loop of micro-batches
+# however, running an app forever is an impossible scenario
+# stop for one of the reasons: failure or maintenance
+
+# so your app must be able to handle the stop and restart gracefully
+# this means that restart with exactly once feature
+  (1) not miss any input records
+  (2) do not create duplicate output records
+  
+# spark structured streaming maintains the state of the micro-batches in the checkpoint location
+# the checkpoint mainly contains two things: read position and state information
+# these two things are maintained using checkingpoint and write-head_log techniques
+
+# so spark maintains all the necessary information to restart the unfinished micro-batch
+however, the ability to restart the failed micro-batch does not guarantee exactly-once
+you can only achieve exactly-once as long as you fulfill these 4 requirements:
+1. restart with same checkpoint
+2. use a replayable source - kafka can, but socket can't
+3. use deterministic computation - produce same result given same input - e.g. watch out for if use date/time dependent logic
+4. use an idempotent sink - able to identify the dupilcates and ingore them
