@@ -1,0 +1,19 @@
+# the goal is to avoid shuffle,that's where spark bucketing will be handy
+
+if you have two data frames that you know they are gonna join in the future
+then is advisable to bucket both of your datasets using your join key
+bucketing your dataset may also require a shuffle
+however it is needed only once when you create your bucket
+once you have a bucket, you can join these datasets without a shuffle, do as many times as you want
+
+(1) create buckets - 3 threads - 3 nodes - 3 buckets
+# the number of bucket or the number of paritions is a critical decision, consider your dataset and available cluster
+e.g. 100G dataset, make 10 paritions, means you plan to process it in 10 executors in parallel
+in ideal case, you are expecting each parition to have 10GB of data,however, you may not get 10GB equal partitions, why?
+because your parition key may have a skew!!!!!!!!!!
+
+** the best performance not exist, you want a predictable performance, which we can slace by adding more executors to do it faster.
+scale your spark application is more of maximizing the parallelism and minimizing the skew **
+
+df.coalesce(1).
+  .bucketBy(3,
