@@ -36,7 +36,18 @@ value_df=kafka.select(col("value").cast("string")) # cast to a string because th
 value_df=kafka.select(from_json(col("value").cast("string"),schema)) # from_json takes 2 arguments (json,schema)
 value_df=kafka.select(from_json(col("value").cast("string"),schema).alias("value")) # change the title name
 
+explod_df = value_df.selectExpr("value.InvoiceNumner","value.CreatedTime",...."value.DeliveryAddress.PinCode",
+                                "explode(value.InvoiceLineItems( as LineItem")
+                                
+                                
+flattened_df = explode_df.withColumn("ItemCode", expr("LineItem.ItemCode"))
+                         .withColumn("ItemDescription", expr("LineItem.ItemDescription")
+                         .....
+                         .withColumn("totalValue",expr("LineItem.TotalValue"))
+                         .drop("LineItem")
+logger.info("Listening to Kafka")
+invoice_writer_query.awaitTermination()
 
-
+                      
 
 ****************************************************************************************************** 
