@@ -1,0 +1,42 @@
+# first need to integrate spark with kafka
+# go to spark-defaults.conf file
+# copy and paste at the end of the file: spark.jars.packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.0.0  #(copy from webpage)
+#automatically download the required package and related dependencies from M aven
+#alternatively, you set this up using python code in your script:
+.config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.0.0") # however, not recommended even it can
+
+****************************************************************************************************** example
+spark = SparkSession.builder.appName("First Streaming Demo").master("local[3])
+                    .config("spark.streaming.stopGracefullyOnShutdown","true")
+                    .getOrCreate()
+                    
+logger = Log4j(spark)
+
+kafka_df = spark.readStream.format("kafka")
+                            .option("kafka.boostrap.servers","localhost:9092")
+                            .option("subscribe","invoices")
+                            .option("startingOffsets","earliest") # default is latest # the 
+                            .load()
+                            
+kafka_df.printSchema()
+# schema problem - look into the value which is the data we care about - it is in binary value
+# need to assign a scheme 
+
+from pyspark.sql.types import StructureType, StringType, LongType, DoubleType,IntegerType,ArrayType
+from pyspark.functions import col
+
+schema=StructuredType([
+            StructuredField("InvoiceNumber", StringType()),
+            StructuredField("CreatedTime", LongType()),
+            .......... # DoubleType(), IntegerType(), ArrayType()
+                            
+value_df=kafka.select(col("value").cast("string")) # cast to a string because the value is in binary and the value contains json string
+
+# assigning a schema to a json string is straightforward
+value_df=kafka.select(from_json(col("value").cast("string"),schema)) # from_json takes 2 arguments (json,schema)
+value_df=kafka.select(from_json(col("value").cast("string"),schema).alias("value")) # change the title name
+
+
+
+
+****************************************************************************************************** 
