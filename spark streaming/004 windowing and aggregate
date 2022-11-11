@@ -1,0 +1,92 @@
+spark API automatically computes the sum across the batches
+we do not need to code for it
+spark streaming API takes care of it with the help of a state store
+
+select(),filter(),map(),flatMap(),explode() are all stateless transformations
+these operations will always work with the current micro-batch, has nothing to do with the history
+
+the grouping and aggregation; windowing and joins transformations are stateful
+
+side effects:
+(1) stateless transformation: complete output mode not supported, you can only use append or update modes
+(2) stateful transformation: excessive state causes out of memory
+
+(1) why?
+stateless queries will produce one or more records for each input record
+10 records -> select statement -> 10 records
+therefore remembering the outcome of the stateless queries are not efficient
+hence, spark does not remeber the previous outcomes
+
+(2) why?
+the state is maintained in the memory of the spark executors. also backed up and checkpointed to the checkpoint location.
+the checkpoined state is used for reloading the state after the failture or restart
+at runtime, the state is cached in the executor memory
+for this reason, state management is one of the critical design considerations
+if you do not maintain the state properly and allow it to grow forever, you will run out of memory at some point
+therefore, spark offers two types of stateful operations
+(1) managed stateful operations 
+spark will automatically clean the state entries when they are no longer needed
+(2) unmanaged stateful operations
+more flexible, allow to define your own custom state cleanup logic
+however, it is evolving, only available in scala and java as of spark 3.0.0
+
+when to use which
+aggregations are two types:
+(1) continuous aggregation
+the loyalty aggregation is an ever-growing continuous aggregation, spark will never lean, not know when to clean
+you need to define the logic
+only save for 7 days. after that, the total accumulated points will be posted in the loyalty account for customers to redeem
+next week, computation again restarts from zero, and you can again accumulate for the next 7 days.
+
+(2) time-bound aggregations
+so above case is a time-bound aggregations. all time-bound aggregations are the right candidate for spark to manage the state cleanup
+continuous aggregation - apply a custom cleanup logic
+
+********************* windowing aggregates
+time-bound aggregates are also known as window aggregates. why? 
+they are computed for a fixed time window and they are valid only until the window expires
+
+in stream processing word, time windows are of two types.
+(1) tumbling time window: a series of fixed-sized, non-overlapping time intervals
+(2) sliding time window: an overlapping window
+
+the aggregation window has nothing to do with the trigger time
+the trigger is the time when you start processing data in a micro-batch
+
+the time window is nothing but a grouping column !!!!!!!!!!!!!!!!
+
+**************************************************************************************************************
+trade_df=value_df.select("value.*") # trick, later on no need to use value.xxx, value.xxx for each column
+                  .withColumn("CreatedTime", to_timestamp(col("CreatedTime"),"yyyy-MM-dd HH:mm:ss"))
+                  .withColumn("Buy", expr("case when Type == 'BUY' then Amount else 0 end"))
+                  .withColumn("Sell", expr("case when Type == 'SELL' then Amount else 0 end"))
+
+window_agg_df=trade_df.groupBy(
+                            window(col("CreatedTime"),"15 minute"))
+                            .agg(sum("Buy").alias("TotalBuy"),
+                            sum("Sell").alias("TotalSell"))
+                                                       
+'''
+window_agg_df=trade_df.groupBy(col("BrokerCode"),
+                            window(col("CreatedTime"),"15 minute")
+                            )   # creating 15 minutes window for each broker
+'''
+
+******* if some records arrive late, later than their window, spark will take the older window from the state store, 
+updated with the information of this new late comer 
+give us a newly updated state of the same old window
+
+
+**** however spark stream does not allow you to apply analytical functions and windowing regates inside a streaming query
+the only windowing aggregate which you can get is the time-based windows and other standard aggregations
+
+# how to fix
+sink it to RDBMS and let your visualization team compute the running totals
+
+summary:
+1. tumbling window aggregates
+2. what happends to late records: the late record will cause an update for the older window, and your sink should hanlde the updates !!!!!!!!
+3. limitations of spark streaming: the workaround uses spark streaming for heay lifting and creates a separate app using batch processing capabilities for handling those requirements
+                                   alternatively, you can sink the output to RDBMs and handle those simple things in RDBMs.
+
+
