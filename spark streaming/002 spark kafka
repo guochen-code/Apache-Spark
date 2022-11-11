@@ -45,6 +45,15 @@ flattened_df = explode_df.withColumn("ItemCode", expr("LineItem.ItemCode"))
                          .....
                          .withColumn("totalValue",expr("LineItem.TotalValue"))
                          .drop("LineItem")
+                         
+invoice_writer_query = flattened_df.writeStream.format("json")
+                                                .queryName("Flattened Invoice Writer")
+                                                .outputMode("append")
+                                                .option("path","output")
+                                                .option("checkpointLocation","chk-point-dir")
+                                                .trigger(processingTime="1 minute")
+                                                .start()
+
 logger.info("Listening to Kafka")
 invoice_writer_query.awaitTermination()
 
