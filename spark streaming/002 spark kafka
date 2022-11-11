@@ -95,8 +95,57 @@ notificaton_writer_query = notification_df.writeStream
 logger.info("Listening and Writing to Kafka")
 notification_writer_query.awaitTermination()
 
+*************************************************************************************************** serialize & deserialize
+# on the reading side.... deserialize....
+1. string - cast()
+2. csv - from_csv()
+3. json - from_json()
+3. AVRO - from_avro()
+
+# on the writing side..... serialize....
+to_json(struct(*)) / to_json(named_struct(*))
+# struct() and named_struct() are used to create a dataframe structure
+# the outcome is again used by the to_json for generating a JSON string
+# the struct() method taks a list of selected columns
+# the named_struct() allows you to rename the selected columns
+
+*************************************************************************************************** AVRO sinks and source
+two things working with Avro
+(1) add avro dependency
+(2) need avro schema (json records can be deserialized using spark schema, but the avro records would need the avro shcema)
+
+# create kafka target dataframe, need to have a key and value
+kafka_target_df = flattened.select(expr("InvoiceNumber as key"),
+                                    to_avro(struct("*")).alias("value")) # struct"col1","col2")
+
+invoice_writer_query = kafka_target_df.writeStream...... # same as above
+# the to_avro() function requires an additional package named spark-avro
+# add to spark-default.conf:
+spark.jar.packages      org.apache.spark:spark-sql-kafka-0-10_2.12:3.0.0,org.apache.spark:spark-avro_2.12:3.0.0
+
+# from_avro
+kafka_source_df=spark.readStream.format("kafka").......load()
+value_df=kafka_source_df.select(from_avro("value"),schema).alias("value"))
+# you cannot use a dataframe schema to deserialize an Avro record
+# the schema above is an Avro format schema string. The schema is defined using the Avro shcema definition language.
+avroSchema=open('schema/invoice-items',mode='r').read()
+value_df=kafka_source_df.select(from_avro("value"),avroSchema).alias("value"))
+
+# calculate total value and rewards
+rewards_df=value_df.filter("value.CustomerType=='PRIME'")
+                   .groupBy("value.CustomerCardNo")
+                   .agg(sum("value.TotalValue").alias("TotalPurchase"),
+                   sum(expr("value.TotalValue*0.2").cast("integer")).alias(AggregatedRewards"))
+
+kafka_target_df=rewards_df.select(expr("CustomerCardNo as key"),
+                                  to_json(struct("TotalPurchase","AggregatedRewards")).alias("value"))
+                                  
+rewards_writer_query=kafka_target_df.writeStream......start()
+rewards_writer_query.awaitTermination()
 
 
 
+
+                                    
 
 
