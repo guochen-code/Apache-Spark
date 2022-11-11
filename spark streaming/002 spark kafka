@@ -5,7 +5,7 @@
 #alternatively, you set this up using python code in your script:
 .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.0.0") # however, not recommended even it can
 
-****************************************************************************************************** example
+****************************************************************************************************** example - from kafka to files
 spark = SparkSession.builder.appName("First Streaming Demo").master("local[3])
                     .config("spark.streaming.stopGracefullyOnShutdown","true")
                     .getOrCreate()
@@ -50,4 +50,44 @@ invoice_writer_query.awaitTermination()
 
                       
 
-****************************************************************************************************** 
+****************************************************************************************************** example from kafka to kafka
+# when working on transformations, you want to do it step by step and see the intermediate output dataframes
+# because developing a series of transformations can be complicated
+# however you can't show a streaming dataframe
+
+# the trick is to change spark.readStream to spark.read !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# the read method is batch processing equivalent of the readStream
+# still from kafka but is not going to loop into micro-batches
+# you will read it once and do the transformations and stop
+# you will be able to show your dataframe and debug your application
+# once you done your experiments, change back to readStream
+
+notification_df = value_df.select("value.InvoiceNumber",''''').withColumn("EarnLoyaltyPoints",expr("TotalAmount*0.2"))
+
+# write back to kafka (!!! need a key/value pair !!!!) (if you want to send data to kafka, must have to columns named key and value) (need to serialize your key/value) 
+# key column is a string and value column is a json record
+
+kafka_target_df = notification_df.selectExpr("InvoiceNumber as key",
+                                             """to_json(named_struct(
+                                             'CustomerCardNo', customerCardNo,
+                                             'TotalAmount', TotalAmount,
+                                             'EarnedLoyaltyPoints', TotalAmount*0.2)) as value
+                                             """)
+
+notificaton_writer_query = notification_df.writeStream
+                                          .queryName("Notification Writer")
+                                          .format("kafka")
+                                          .option("kafka.bootstrap.servers","localhost:9092")
+                                          .option("topic","notifications")
+                                          .outputMode("append")  # insert only
+                                          .option("checkpointLocation","chk-point-dir")
+                                          .start()
+                                          
+logger.info("Listening and Writing to Kafka")
+notification_writer_query.awaitTermination()
+
+
+
+
+
+
