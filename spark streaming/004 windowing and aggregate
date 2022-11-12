@@ -90,3 +90,37 @@ summary:
                                    alternatively, you can sink the output to RDBMs and handle those simple things in RDBMs.
 
 
+
+
+****************************************************************************** watermark
+how to set an expiry date for the window state in the state store?
+in spark, the expiry date for the window is known as watermark
+decide your limit for the watermark is a business requirement
+
+how long do you want to wait for your late-arriving records?
+or when a late record no longer relevant?
+
+.withWatermark("CreatedTime","30 minute") # 1st argument is the event time column; 2nd is watermark duration
+.groupBy(window(col("CreatedTime"),"15 minute")) # must be called before groupBy
+.agg(.....) # event time column should be the same, which you are going to use for windowing
+
+so spark knows two things:
+(1) ignore record if it arrives late by more than 30 minutes
+(2) clean up the window state if it is older than 30 minutes
+
+every micro-batch will update the watermark boundary
+an indicative formula to arrive at the watermark boundary is given here:
+*** Max(Event Time) - Watermark = Watermark Boundary
+spark will clean the state store after committing the sink records and finalize the micro-batch
+so the next micro-batch will start ignoring those late events for which we do not have a state
+
+in summary:
+(1) watermark is the key for state store cleanup. memory crisis without it
+(2) events within the watermark is taken
+(3) event outside the watermark may or may not be taken
+    including an event to a window depends on the state-store. if the window is cleaned, spark will not take the event
+    if the window state still exists, spark will consider it.
+    
+    
+
+
