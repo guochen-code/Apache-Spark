@@ -122,5 +122,44 @@ in summary:
     if the window state still exists, spark will consider it.
     
     
+****************************************************************************** output mode
+1. complete : because of completeness, cannot clean state store, even you give watermark. # use complete mode on time window aggregations with caution
+  either complete mode or clean up, only can have one.
+2. update == upsert
+  spark does not support updating data files such as parquet or json, spark will always create a new file,
+  so if you use update mode and sinking to file source, you will create duplicate records
+  it should be used with sinks that support an upsert operation, such as cassandra database
+3. append
+  use this mode on aggregate queries will throw an analysis exception.
+  this mode allowed only when spark knows the following record will not update or change in future
+  because append output mode is desinged to output a record only once
+  aggregate values might change in the future due to a late event
+  but when you aggregate on event time and also apply a watermark, the scenario is changed
+  because now spark knows when a window goes outside the watermark, it cannot change
+  so spark allows you to use the append mode if you are aggregating on event time and applying a watermark
+  
+  # you will not get window because spark will hold this aggregate in the state store until the window state expires
+  append mode will suppress the output of the windowing aggregates until they cross the watermark boundary
+  this is a powerful feature, now you can use the append only sinks such a file sink
+  because append mode will only emit the result once it is finalized, no further updates are required
+  so you can sink the output to a file !!!!!!!!!!!!!!!!
+  downside is that the result will be delayed at least by the watermark duration
+  so if the delay is not a concern, you can use the append mode with a file sink
+  
+  if deplay is a concern, you should use the update mode with a sink, which supports an older record update 
+  
+  
+  ****************************************************************************** sliding window
+tumpling windows have 2 properties:
+(1) fixed size
+(2) not overlapping
+
+sliding windows/hopping windows:
+
+agg_df=senosr_df.withWatermark("CreatedTime","30 minute")
+                .groupBy(col("SensorID"), window(col("CreatedTime"), "15 minute", "5 minute")) # 5 minute is the only change compared to tumpling window code!!!!!!!
+                .agg(max("Reading").alias("MaxReading"))
+  
+
 
 
