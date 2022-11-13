@@ -1,0 +1,124 @@
+(1) streaming to static database (cassandra database)
+create a spark streaming project
+1) create a spark session
+2) define a schema for kafka input
+3) read kafka stream
+4) extract the value field and fix the created time data type
+5) my streaming dataframe which holds the login events coming to kafka
+6) read cassandra table to a spark dataframe
+
+spark = SparkSession.builder.master("local[3]")
+                    ......
+                    .config("spark.cassandra.connection.host","localhost")
+                    .config("spark.cassandra.connection.port","9042")
+                    .config("spark.sql.extensions","com.datastax.spark.connector.CassanddraSparktensions")
+                    .config("spark.sql.catalog.lg","com.datastax.spark.connector.datasource.CassandraCatalog")
+                    .getOrCreate()
+
+login_df = value_df.select("value.*").withColumn("created_time",to_timestamp(col("created_time"),"yyyy-MM-dd HH:mm:ss"))
+
+user_df = spark.read.format("org.apache.spark.sql.cassandra")
+               . option("keyspace","spark_db") # keyspace name
+               .option("table","users") # table name
+               .load()
+# you can give the connection details here in the options or set it in the spark configs, which is preferred. need hostname and the port....
+# cassandra connector is not spark package, so you must include it in your project
+# how to add dependencies to your project?
+go to spark3-conf-spark-defaults.conf and open the conf file
+spark.jars.packages             com.datastax.spark:spark-cassandra-connector_2.12"3.0.0-beta
+
+# now you have two dataframes
+---- login_df is a streaming dataframe which is reading a stream from kafka
+---- user_df is a static dataframe which is reading from a Cassandra table
+# need to join them, need two things
+---- join expression
+---- join type
+join_expr = login_df.login_id == user_df.login_id
+join_type="inner"
+
+joined_df = login_df.join(user_df,join_expr,join_type)
+                    .drop(login_df.login_id) # drop one because we have two
+                    
+output_df=joined_df.select(col("login_id"),col("user_name"),
+                            col("created_time").alias("last_login"))
+                            
+# sink to cassandra table. we learnt console,file and kafka sinks. 
+# spark gives you an alternative to sink to any source even if you do not have a sink connector to cassandra
+output_query = output_df.WriteStream # cannot use format because do not have a ready to use sink connector for cassandra
+                        .foreachBatch(write_to_cassandra) # high order function allows you to supply a user defined function
+                        .outputMode("update")
+                        .optoin("checkpointLocation","chk-point-dir")
+                        .trigger(processingTime="1 minute")
+                        .start()
+                        
+logger.info("Waiting for Query")
+output_query.awaitTermination()
+
+
+def write_to_cassandra(target_df,batch_id):
+  target_df.write
+           .format("org.apache.spark.sql.cassandra")
+           .option("keyspace","spark_db")
+           .option("table","users")
+           .mode("append")
+           .save()
+  target_df.show()
+  
+  
+  
+# we are dealing with cassandra database and cassandra implements the insert operation as an upsert.
+# if the record already exists for the deinfed primary key, cassandra will update the same record.
+# a typical RDBMs would throw an exception, but cassandra simply upates the same record.
+
+# a new user/record added to cassandra database, so the user was not there in the cassandra table when we started the streaming app.
+# the changes to this table are picked up by the streaming job
+# that's because cassandra table is being reread in each micro-batch
+# so if new records are coming in your static data source, it should be picked up by the next micro-batch
+
+in summary:
+if you have a standard spark connector, you can use the foreachBatch to create a streaming sink for yourself
+
+************************************************************************************************************************************
+(2) streaming to streaming
+# stream to staic joins are stateless operation, spark does not need to maintain any state for such joins.
+why?
+the state is required when you do not have information in hand, and you are expecting it to come in the near future
+for example, aggregates, when you computing aggregates, you do it for one micro-batch, but you do not know if you receive all inout values
+they might come in the next batch, so the aggregate you computed for the current micro-batch is not final
+it might update depending on future records
+hence, spark will keep the aggregates in the state store and update it again when a new record arrives
+
+in the streaming to static database scenario: one side of the join is fully known.
+in the streaming to streaming scenario, both side of the join is just partial dataframes, 
+assume you have record A on the one side but A is not present on the other side, so you cannot join them
+however, you cannot discard the left side record, you must keep it in the state store
+why? because if the next micro-batch brings record A on the other side, you must join it.
+!!!!! stream to stream join is a stateful join !!!!!
+spark buffers both side in the state store and continuous checks for the match as the new data arrives across the micro-batches
+
+1) create spark session
+2) create impression and click schema
+3) reading impression topic from kafka
+4) extract value to make the impression dataframe
+5) reading clicks topic from kafka
+6) extract value to make the clicks dataframe
+7) join the dataframes
+
+# update mode does not make any sense for a plain join.
+# why? we do not have anything to update here. either the record is joined or is not joined.
+# once joined, do not have any further updates to the record.
+# the append mode makes a perfect sense here because each record comes out only once after the join happened.
+
+# more importantly, it is not only impression, but clicks are also kept in the state store forever.
+
+in summary:
+# the entire stream from both sides of the join is kept in the state store
+# spark does not know when it should clean the records from the state store
+@@@@@@@@@@@@@@@@@@@@@@
+# duplicate events will cause logically incorrect joins
+# so be careful when you are modeling your solutions, you should have given a unique id to each impression
+# using inventory id will cause duplicate impressions, and each of those will join with all the previous and future clicks for the same inventory id.
+
+
+
+
