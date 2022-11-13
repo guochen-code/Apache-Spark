@@ -120,5 +120,92 @@ in summary:
 # using inventory id will cause duplicate impressions, and each of those will join with all the previous and future clicks for the same inventory id.
 
 
+************************************************************************************************************************************ clean state store
+changed join-on to the impresseion id which is unique value
+
+# add watermark
+impressions_df = kafka_impression_df.....
+                                    .withWatermark("ImpressionTime","30 minute")
+                                    
+clicks_df = kafka_click_df....
+                           .withWatermark("ClickTIme","30 minute")
+
+# later arrivers if too late, later than the watermark, spark will ignore them !!!!!!!!!
+
+in summary:
+spark stream-to-stream join will hold all the records in the state store, you can specify the watermark on both streams(can be different)
+spark will start cleaning records that are going below the watermark
+watermark is optional for inner joins
+however, joining two streams that do not have a watermark will fill the executors memory very quickly, start seeing the out of memory problems.
+
+
+###!!! remember one thing: cleaning records from the state store below the watermark may happen immediately as soon as the record goes outside the watermark boundary
+or may be delayed by spark as part of some optimizations.
+so the spark does not guarantee that the records outside the watermark will be surely ignored.
+however, the spark guarantees that the engine will never drop any data that is within the watermark boundary
+
+
+
+************************************************************************************************************************************ outer join
+outer joins in spark streaming
+1. left outer - conditionally allowed
+2. right outer - conditionally allowed
+3. full outer - not allowed
+
+---- left outer - left side must be a stream, implemeting left outer must meet the following 2 conditions:
+     a. watermark on the right-side stream
+     b. maximum time range constraint between the left and the right-side events
+---- right outer - right side must be a stream, implemeting right outer must meet the following 2 conditions:
+     a. watermakr on the left-side stream
+     b. maximum time range constraint between the left and the right-side events
+     
+# you should implement watermark on both sides, otherwise it will be not cleaned up in the state store
+# so implementing watermark is mandatory
+# you must implement time range constraint
+
+join_type="leftouter"
+
+maximum time range constraint between the left and the right-side events == define the maximum delay between the two events
+for example, a click event can happen in a maximum of 15 minutes from the impression event
+impression is generated first, which can be clicked within 15 minutes
+if an impression is not clicked within 15 minutes, we do not consider it a valid click event
+
+how to set this in code?
+join_expr="ImpressionID==ClickID" + " AND ClickTIme Between ImpressionTime AND ImpressionTime + interval 15 mite"      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+# wait a minute, we are doing left join, so even if the impression 102 does not have a match, it should appear in the result, 
+# it should and eventually it will. but spark will not emit impression 102 in this micro-batch. instead, it will keep the impression 102 in the state store and 
+wait for a matching click to arrive. if the click does not arrive within the watermark boundary.
+the spark will then emit the impression, assuming that it remains unmatched.
+until we pass the watermark boundary, we must wait to find a match
+
+***************************************************
+watermark boundary = max(event time) - watermark
+9:30 = 10:00 - 30minute
+
+the time range constraint says that the click can be delayed by 15 minutes from the impression
+so the impression should wait for an additional 15 minutes
+for impression state store:
+10:00 - 30 minute -15 minute = 9:15
+
+for click state store:
+10:16 - 30 minute = 9:46
+***************************************************
+
+case scenario:
+impression 102 was never sent in output because it was not matched with any click. now it expired and should be cleaned.
+however, we cannot clean it because we are doing a left outer join. 
+the impression 102 must go to the output at least once. should go out with some nulls on the right side.
+before cleaning, spark already sent the output for this micro-batch. hence this record is marked to go to output and also get cleaned.
+the current micro-batch is already over and so the 102 will go to the next micro-batch output
+I haven't sent any new input, but spark triggered the next micro-batch even if there were no inputs !!!!!!!!!!!!!!!!!!!!!!!!!
+because you already hae something to output for the next micro-batch
+if I have more inputs for this micro-batch, this record would have come with the micro-batch output
+
+
+in summary:
+unmatched records will arrive late because they will be waiting for the watermark boundary to expire
+the unmatched record is further delayed by one micro-batch and only appears in the next micro-batch because spark computes the watermark after sending it
+so the unmatched records are sent only in the next micro-batch after the watermark expires.
 
 
